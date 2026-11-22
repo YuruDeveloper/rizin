@@ -26,6 +26,7 @@ static RzTypeStructMember *class_member_parse(const RzTypeDB *typedb, RzPdbTpiSt
 static RzType *enum_parse(const RzTypeDB *typedb, RzPdbTpiStream *stream, RzPdbTpiType *type);
 static RzTypeEnumCase *enumerate_parse(RzPdbTpiType *type);
 static RzType *pdb_simple_type_parse(const RzTypeDB *typedb, const RzPdbTpiType *type);
+static ut64 type_byte_size(RzPdbTpiStream *stream, RzPdbTpiType *type);
 
 static bool is_parsable_type(const RzPdbTpiType *t) {
 	const RzPDBTpiKind k = t->kind;
@@ -75,9 +76,10 @@ static RzType *array_parse(const RzTypeDB *typedb, RzPdbTpiStream *stream, RzPdb
 	if (!typ) {
 		return NULL;
 	}
+	ut64 element_size = type_byte_size(stream, element);
 	typ->kind = RZ_TYPE_KIND_ARRAY;
 	typ->array.type = element_type;
-	typ->array.count = rz_bin_pdb_get_type_val(type);
+	typ->array.count = element_size ? rz_bin_pdb_get_type_val(type) / element_size : 0;
 	return typ;
 }
 
@@ -432,6 +434,91 @@ static inline RzBaseType *get_tpitype_basetype(const RzTypeDB *typedb, RzPdbTpiT
 		base_type = rz_type_db_get_base_type(typedb, name);
 	}
 	return base_type;
+}
+
+static const char *tag_type_key(const RzPdbTpiType *type) {
+	const char *name = NULL;
+	const char *mangled_name = NULL;
+	if (type->kind == TpiKind_CLASS) {
+		const Tpi_LF_Class *lf_class = type->data;
+		name = lf_class->name;
+		mangled_name = lf_class->mangled_name;
+	} else if (type->kind == TpiKind_UNION) {
+		const Tpi_LF_Union *lf_union = type->data;
+		name = lf_union->name;
+		mangled_name = lf_union->mangled_name;
+	}
+	if (RZ_STR_ISNOTEMPTY(mangled_name)) {
+		return mangled_name;
+	}
+	return is_tpitype_unnamed(name) ? NULL : name;
+}
+
+static HtSP *full_types_new(RzPdbTpiStream *stream) {
+	HtSP *full_types = ht_sp_new(HT_STR_CONST, NULL, NULL);
+	if (!full_types) {
+		return NULL;
+	}
+	RBIter it;
+	RzPdbTpiType *candidate;
+	rz_rbtree_foreach (stream->types, it, candidate, RzPdbTpiType, rb) {
+		if ((candidate->kind != TpiKind_CLASS && candidate->kind != TpiKind_UNION) || !candidate->data || rz_bin_pdb_type_is_fwdref(candidate)) {
+			continue;
+		}
+		const char *key = tag_type_key(candidate);
+		if (key) {
+			ht_sp_insert(full_types, key, candidate);
+		}
+	}
+	return full_types;
+}
+
+static RzPdbTpiType *full_tag_type(RzPdbTpiStream *stream, RzPdbTpiType *type) {
+	if (!rz_bin_pdb_type_is_fwdref(type)) {
+		return type;
+	}
+	if (!stream->full_types) {
+		stream->full_types = full_types_new(stream);
+	}
+	if (!stream->full_types) {
+		return NULL;
+	}
+	const char *key = tag_type_key(type);
+	RzPdbTpiType *full = key ? ht_sp_find(stream->full_types, key, NULL) : NULL;
+	return full && full->kind == type->kind ? full : NULL;
+}
+
+static ut64 type_byte_size(RzPdbTpiStream *stream, RzPdbTpiType *type) {
+	if (!type || !type->data) {
+		return 0;
+	}
+	switch (type->kind) {
+	case TpiKind_SIMPLE_TYPE: {
+		const Tpi_LF_SimpleType *simple_type = type->data;
+		return simple_type->size;
+	}
+	case TpiKind_POINTER: {
+		const Tpi_LF_Pointer *lf_pointer = type->data;
+		return lf_pointer->ptr_attr.size;
+	}
+	case TpiKind_MODIFIER: {
+		const Tpi_LF_Modifier *lf_modifier = type->data;
+		return type_byte_size(stream, rz_bin_pdb_get_type_by_index(stream, lf_modifier->modified_type));
+	}
+	case TpiKind_ENUM: {
+		const Tpi_LF_Enum *lf_enum = type->data;
+		return type_byte_size(stream, rz_bin_pdb_get_type_by_index(stream, lf_enum->utype));
+	}
+	case TpiKind_ARRAY:
+		return rz_bin_pdb_get_type_val(type);
+	case TpiKind_CLASS:
+	case TpiKind_UNION: {
+		RzPdbTpiType *full = full_tag_type(stream, type);
+		return full ? rz_bin_pdb_get_type_val(full) : 0;
+	}
+	default:
+		return 0;
+	}
 }
 
 static RzType *create_rztype(RzPdbTpiType *type, RzTypeIdentifierKind kind, const char *name) {

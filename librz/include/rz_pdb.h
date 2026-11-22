@@ -186,6 +186,7 @@ typedef struct tpi_stream_t {
 	RBTree types;
 	ut64 type_index_base;
 	RzList /*<RzBaseType *>*/ *print_type;
+	HtSP /*<char *, RzPdbTpiType *>*/ *full_types;
 } RzPdbTpiStream;
 
 // PDB

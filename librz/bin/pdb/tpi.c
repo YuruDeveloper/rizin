@@ -824,6 +824,7 @@ RZ_IPI void tpi_stream_free(RzPdbTpiStream *stream) {
 	}
 	rz_rbtree_free(stream->types, tpi_rbtree_free, NULL);
 	rz_list_free(stream->print_type);
+	ht_sp_free(stream->full_types);
 	free(stream);
 }
 
