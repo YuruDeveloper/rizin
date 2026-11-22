@@ -34,7 +34,7 @@ static void pdb_types_print_json(const RzTypeDB *db, const RzPdb *pdb, const RzL
 			pj_o(pj);
 			pj_ks(pj, "type", "structure");
 			pj_ks(pj, "name", type->name);
-			pj_kn(pj, "size", type->size);
+			pj_kn(pj, "size", type->size / 8);
 			pj_ka(pj, "members");
 			RzTypeStructMember *memb;
 			rz_vector_foreach (&type->struct_data.members, memb) {
@@ -54,7 +54,7 @@ static void pdb_types_print_json(const RzTypeDB *db, const RzPdb *pdb, const RzL
 			pj_o(pj);
 			pj_ks(pj, "type", "union");
 			pj_ks(pj, "name", type->name);
-			pj_kn(pj, "size", type->size);
+			pj_kn(pj, "size", type->size / 8);
 			pj_ka(pj, "members");
 			RzTypeUnionMember *memb;
 			rz_vector_foreach (&type->union_data.members, memb) {

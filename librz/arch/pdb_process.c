@@ -532,7 +532,7 @@ foreach_members:
 		}
 		free(struct_member);
 	}
-	base_type->size = rz_bin_pdb_get_type_val(type);
+	base_type->size = rz_bin_pdb_get_type_val(type) * 8;
 	if (base_type->attrs == RZ_TYPE_TYPECLASS_INVALID) {
 		base_type->attrs = RZ_TYPE_TYPECLASS_NONE;
 		rz_list_append(stream->print_type, base_type);
@@ -663,7 +663,7 @@ foreach_members:
 		}
 		free(union_member);
 	}
-	base_type->size = rz_bin_pdb_get_type_val(type);
+	base_type->size = rz_bin_pdb_get_type_val(type) * 8;
 	if (base_type->attrs == RZ_TYPE_TYPECLASS_INVALID) {
 		base_type->attrs = RZ_TYPE_TYPECLASS_NONE;
 		rz_list_append(stream->print_type, base_type);
