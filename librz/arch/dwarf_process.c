@@ -810,37 +810,45 @@ err:
 }
 
 /**
- * \brief Parse and return the count of an array or 0 if not found/not defined
+ * \brief Parse and return the count of one dimension of an array or 0 if not found/not defined
  */
-static ut64 array_count_parse(DwContext *ctx, RzBinDwarfDie *die) {
-	if (!die->has_children) {
-		return 0;
+static ut64 subrange_count_parse(RzBinDwarfDie *die) {
+	RzBinDwarfAttr *attr;
+	rz_vector_foreach (&die->attrs, attr) {
+		switch (attr->at) {
+		case DW_AT_upper_bound:
+			return rz_bin_dwarf_attr_udata(attr) + 1;
+		case DW_AT_count:
+			return rz_bin_dwarf_attr_udata(attr);
+		default:
+			break;
+		}
 	}
-	RzPVector *children = die_children(die, ctx->dw);
-	if (!children) {
-		return 0;
-	}
+	return 0;
+}
 
-	void **it;
-	rz_pvector_foreach (children, it) {
-		RzBinDwarfDie *child_die = *it;
+static RZ_OWN RzType *array_of_owned_type(DwContext *ctx, RZ_OWN RzType *type, ut64 count) {
+	RzType *array = rz_type_array_of_type(ctx->analysis->typedb, type, count);
+	if (!array) {
+		rz_type_free(type);
+	}
+	return array;
+}
+
+static RZ_OWN RzType *array_type_parse(DwContext *ctx, RzBinDwarfDie *die, RZ_OWN RzType *subtype) {
+	RzPVector *children = die->has_children ? die_children(die, ctx->dw) : NULL;
+	RzType *type = subtype;
+	bool has_dimension = false;
+	for (size_t i = rz_pvector_len(children); type && i > 0; i--) {
+		RzBinDwarfDie *child_die = rz_pvector_at(children, i - 1);
 		if (child_die->tag != DW_TAG_subrange_type) {
 			continue;
 		}
-		RzBinDwarfAttr *attr;
-		rz_vector_foreach (&child_die->attrs, attr) {
-			switch (attr->at) {
-			case DW_AT_upper_bound:
-			case DW_AT_count:
-				rz_pvector_free(children);
-				return rz_bin_dwarf_attr_udata(attr) + 1;
-			default:
-				break;
-			}
-		}
+		has_dimension = true;
+		type = array_of_owned_type(ctx, type, subrange_count_parse(child_die));
 	}
 	rz_pvector_free(children);
-	return 0;
+	return has_dimension ? type : array_of_owned_type(ctx, type, 0);
 }
 
 /**
@@ -1006,11 +1014,7 @@ static RZ_OWN RzType *type_parse_from_offset_internal(
 		if (!subtype) {
 			goto end;
 		}
-		ut64 count = array_count_parse(ctx, die);
-		type = rz_type_array_of_type(ctx->analysis->typedb, subtype, count);
-		if (!type) {
-			rz_type_free(subtype);
-		}
+		type = array_type_parse(ctx, die, subtype);
 		break;
 	}
 	case DW_TAG_const_type: {
