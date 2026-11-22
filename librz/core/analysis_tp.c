@@ -270,6 +270,22 @@ static RzList /*<char *>*/ *parse_format(RzCore *core, char *fmt) {
 	return ret;
 }
 
+/**
+ * \brief Gives the type of a variable of the caller to an argument variable of the callee.
+ *
+ * A type that is narrower than the current type of the argument is ignored. The width of
+ * a variable of the caller is not the width of the value that the callee gets: the caller
+ * can give the address of the variable or a value that it extends to the width of the argument.
+ */
+static void callee_arg_type_set(RzAnalysis *analysis, RzAnalysisVar *arg, RZ_BORROW RzType *type) {
+	RzTypeDB *typedb = rz_analysis_get_type_db(analysis);
+	ut64 size = rz_type_db_get_bitsize(typedb, type);
+	if (size && arg->type && size < rz_type_db_get_bitsize(typedb, arg->type)) {
+		return;
+	}
+	var_type_set_resolve_overlaps(analysis, arg, type, false);
+}
+
 static void retype_callee_arg(RzAnalysis *analysis, const char *callee_name, bool in_stack, const char *place, int size, RZ_BORROW RzType *type) {
 	RzAnalysisFunction *fcn = rz_analysis_get_function_byname(analysis, callee_name);
 	if (!fcn) {
@@ -280,16 +296,16 @@ static void retype_callee_arg(RzAnalysis *analysis, const char *callee_name, boo
 		if (!var) {
 			return;
 		}
-		var_type_set_resolve_overlaps(analysis, var, type, false);
+		callee_arg_type_set(analysis, var, type);
 	} else {
 		RzAnalysisVar *rvar = rz_analysis_function_get_reg_var_at(fcn, place);
 		if (!rvar) {
 			return;
 		}
-		var_type_set_resolve_overlaps(analysis, rvar, type, false);
+		callee_arg_type_set(analysis, rvar, type);
 		RzAnalysisVar *lvar = rz_analysis_var_get_dst_var(rvar);
 		if (lvar) {
-			var_type_set_resolve_overlaps(analysis, lvar, type, false);
+			callee_arg_type_set(analysis, lvar, type);
 		}
 	}
 }
