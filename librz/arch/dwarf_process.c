@@ -831,9 +831,11 @@ static ut64 array_count_parse(DwContext *ctx, RzBinDwarfDie *die) {
 		rz_vector_foreach (&child_die->attrs, attr) {
 			switch (attr->at) {
 			case DW_AT_upper_bound:
-			case DW_AT_count:
 				rz_pvector_free(children);
 				return rz_bin_dwarf_attr_udata(attr) + 1;
+			case DW_AT_count:
+				rz_pvector_free(children);
+				return rz_bin_dwarf_attr_udata(attr);
 			default:
 				break;
 			}
