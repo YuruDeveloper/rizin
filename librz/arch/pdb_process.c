@@ -79,7 +79,8 @@ static RzType *array_parse(const RzTypeDB *typedb, RzPdbTpiStream *stream, RzPdb
 	ut64 element_size = type_byte_size(stream, element);
 	typ->kind = RZ_TYPE_KIND_ARRAY;
 	typ->array.type = element_type;
-	typ->array.count = element_size ? rz_bin_pdb_get_type_val(type) / element_size : 0;
+	ut64 array_size = rz_bin_pdb_get_type_val(type);
+	typ->array.count = element_size ? array_size / element_size : array_size;
 	return typ;
 }
 
