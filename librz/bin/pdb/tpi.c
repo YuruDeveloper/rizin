@@ -231,7 +231,7 @@ RZ_IPI RzPdbTpiType *simple_type_parse(RzPdbTpiStream *stream, ut32 idx) {
 		b = rz_strbuf_new("unsigned char");
 		break;
 	case PDB_WIDE_CHAR:
-		simple_type->size = 4;
+		simple_type->size = 2;
 		b = rz_strbuf_new("wchar_t");
 		break;
 	case PDB_CHAR16:
@@ -824,6 +824,7 @@ RZ_IPI void tpi_stream_free(RzPdbTpiStream *stream) {
 	}
 	rz_rbtree_free(stream->types, tpi_rbtree_free, NULL);
 	rz_list_free(stream->print_type);
+	ht_sp_free(stream->full_types);
 	free(stream);
 }
 
