@@ -318,7 +318,7 @@ RZ_IPI void rz_core_types_struct_print(RzCore *core, const RzBaseType *btype, Rz
 			rz_vector_foreach (&btype->struct_data.members, memb) {
 				char *mtype = rz_type_as_string(typedb, memb->type);
 				ut64 size = rz_type_db_get_bitsize(typedb, memb->type) / 8;
-				ut64 shown_offset = recorded_layout && !memb->size ? memb->offset : offset;
+				ut64 shown_offset = recorded_layout && (!memb->size || memb->offset < btype->size / 8) ? memb->offset : offset;
 				rz_cons_printf(core->cons, "\t%s: ", memb->name);
 				if (mtype) {
 					rz_core_types_print_c(core->cons, mtype);
