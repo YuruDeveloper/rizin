@@ -10,6 +10,7 @@
 #include "test_config.h"
 #include "minunit.h"
 #include "test_sdb.h"
+#include "../../librz/arch/analysis_private.h"
 
 static void setup_sdb_for_struct(Sdb *res) {
 	// td "struct kappa {int bar;int cow;};"
@@ -1278,6 +1279,18 @@ static bool test_dwarf_member_offset(void) {
 	mu_end;
 }
 
+static bool test_dwarf_bitfield_end(void) {
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(false, 4, 4, 25, 3), 39, "little endian");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(true, 4, 4, 4, 3), 39, "big endian");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(true, 4, 4, 25, 3), 60, "big endian with the same values");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(false, 0, 1, 0, 8), 8, "all bits of one byte");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(false, 4, 0, 25, 3), 0, "no DW_AT_byte_size");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(false, RZ_TYPE_MEMBER_OFFSET_UNKNOWN, 4, 25, 3), 0, "unknown offset");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(false, 4, 4, 30, 3), 0, "bits after the storage unit");
+	mu_assert_eq(rz_analysis_dwarf_bitfield_end(false, 4, 4, 25, 0), 0, "no width");
+	mu_end;
+}
+
 static bool test_struct_union_bitfield(void) {
 	RzTypeDB *typedb = rz_type_db_new();
 	mu_assert_notnull(typedb, "Couldn't create new RzTypeDB");
@@ -2501,6 +2514,7 @@ int all_tests() {
 	mu_run_test(test_struct_print_bitfield_offsets);
 	mu_run_test(test_struct_print_unknown_offset);
 	mu_run_test(test_dwarf_member_offset);
+	mu_run_test(test_dwarf_bitfield_end);
 	mu_run_test(test_struct_union_bitfield);
 	mu_run_test(test_struct_identifier_without_specifier);
 	mu_run_test(test_union_identifier_without_specifier);

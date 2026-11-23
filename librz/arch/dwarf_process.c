@@ -1131,6 +1131,11 @@ static RzTypeStructMember *struct_member_parse(
 	RzType *type = NULL;
 	ut64 offset = 0;
 	ut64 size = 0; // bitfield width in bits, 0 if the member is not a bitfield
+	ut64 unit_bytes = 0;
+	ut64 bit_offset = 0;
+	ut64 data_bit_offset = 0;
+	bool has_bit_offset = false;
+	bool has_data_bit_offset = false;
 	RzBinDwarfAttr *attr = NULL;
 	rz_vector_foreach (&die->attrs, attr) {
 		switch (attr->at) {
@@ -1156,11 +1161,16 @@ static RzTypeStructMember *struct_member_parse(
 			break;
 		// A bitfield member carries DW_AT_bit_size, whose value is the width in
 		// bits and is recorded as the member size. DW_AT_byte_size is the storage
-		// size, not a bitfield marker, so it is ignored here.
+		// size, not a bitfield marker. It is used only with DW_AT_bit_offset.
 		case DW_AT_byte_size:
+			unit_bytes = rz_bin_dwarf_attr_udata(attr);
 			break;
 		case DW_AT_bit_size:
 			size = rz_bin_dwarf_attr_udata(attr);
+			break;
+		case DW_AT_bit_offset:
+			bit_offset = rz_bin_dwarf_attr_udata(attr);
+			has_bit_offset = true;
 			break;
 		case DW_AT_data_bit_offset:
 			/*
@@ -1168,7 +1178,9 @@ static RzTypeStructMember *struct_member_parse(
 				of containing entity to the beginning of the data member.
 				The member offset is the byte that contains the first bit.
 			*/
-			offset = rz_bin_dwarf_attr_udata(attr) / 8;
+			data_bit_offset = rz_bin_dwarf_attr_udata(attr);
+			has_data_bit_offset = true;
+			offset = data_bit_offset / 8;
 			break;
 		case DW_AT_accessibility: // private, public etc.
 		case DW_AT_mutable: // flag is it is mutable
@@ -1190,6 +1202,11 @@ static RzTypeStructMember *struct_member_parse(
 	result->type = type;
 	result->offset = offset;
 	result->size = size;
+	if (size && has_data_bit_offset && data_bit_offset <= UT64_MAX - size) {
+		result->bit_end = data_bit_offset + size;
+	} else if (has_bit_offset && !has_data_bit_offset) {
+		result->bit_end = rz_analysis_dwarf_bitfield_end(ctx->dw->info->R->big_endian, offset, unit_bytes, bit_offset, size);
+	}
 	return result;
 
 cleanup:

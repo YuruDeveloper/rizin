@@ -105,4 +105,15 @@ RZ_IPI RZ_BORROW RzAnalysisVar *rz_analysis_fcn_sig_arg_var(RZ_NONNULL RzAnalysi
 RZ_IPI RZ_OWN char *rz_analysis_fcn_callable_with_location(RZ_NONNULL RzAnalysis *analysis, RZ_NONNULL RzAnalysisFunction *fcn,
 	RZ_NONNULL const RzCallable *callable, RZ_NONNULL RZ_OUT RzPVector /*<RzAnalysisVar *>*/ *shown);
 
+static inline ut64 rz_analysis_dwarf_bitfield_end(bool big_endian, ut64 unit_offset, ut64 unit_bytes, ut64 bit_offset, ut64 width) {
+	if (!width || unit_offset == RZ_TYPE_MEMBER_OFFSET_UNKNOWN || unit_bytes > UT32_MAX || unit_offset > UT32_MAX) {
+		return 0;
+	}
+	ut64 unit_bits = unit_bytes * CHAR_BIT;
+	if (bit_offset > unit_bits || width > unit_bits - bit_offset) {
+		return 0;
+	}
+	return unit_offset * CHAR_BIT + (big_endian ? bit_offset + width : unit_bits - bit_offset);
+}
+
 #endif // RZ_ANALYSIS_PRIVATE_H
