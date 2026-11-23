@@ -1135,6 +1135,64 @@ static bool test_struct_print_recorded_offsets(void) {
 	mu_end;
 }
 
+static bool test_struct_print_unknown_offset(void) {
+	RzCore *core = rz_core_new();
+	mu_assert_notnull(core, "core");
+	rz_config_set_i(core->config, "scr.color", COLOR_MODE_DISABLED);
+	RzTypeDB *typedb = rz_analysis_get_type_db(core->analysis);
+	const char *types_dir = TEST_BUILD_TYPES_DIR;
+	rz_type_db_init(typedb, types_dir, "x86", 64, "linux");
+	rz_type_db_set_bits(typedb, 64);
+	const char *setup =
+		"td \"struct Mixed { int flags; int value; };\"; "
+		"td \"struct Gap { char tag; int value; int last; };\"";
+	mu_assert_eq(rz_core_cmd0_rzshell(core, setup), RZ_CMD_STATUS_OK, "define test types");
+
+	const char *mixed_sum =
+		"struct Mixed:\n"
+		"\tflags: int (size = 4, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 4)\n";
+	const char *mixed_recorded_zero =
+		"struct Mixed:\n"
+		"\tflags: int (size = 4, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 0)\n";
+	RzBaseType *mixed = rz_type_db_get_base_type(typedb, "Mixed");
+	mu_assert_notnull(mixed, "base type");
+	RzTypeStructMember *flags = rz_vector_index_ptr(&mixed->struct_data.members, 0);
+	flags->size = 32;
+	RzTypeStructMember *value = rz_vector_index_ptr(&mixed->struct_data.members, 1);
+	mixed->size = 8 * 8;
+	value->offset = 0;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Mixed"), mixed_recorded_zero, "recorded offset 0 for the member after a bitfield");
+	value->offset = RZ_TYPE_MEMBER_OFFSET_UNKNOWN;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Mixed"), mixed_sum, "sum of the member sizes when the offset of the member after a bitfield is not known");
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Mixed"), mixed_sum, "same output for the second call");
+
+	const char *gap_sum =
+		"struct Gap:\n"
+		"\ttag: char (size = 1, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 1)\n"
+		"\tlast: int (size = 4, offset = 5)\n";
+	const char *gap_recorded =
+		"struct Gap:\n"
+		"\ttag: char (size = 1, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 4)\n"
+		"\tlast: int (size = 4, offset = 8)\n";
+	RzBaseType *gap = rz_type_db_get_base_type(typedb, "Gap");
+	mu_assert_notnull(gap, "base type");
+	RzTypeStructMember *gap_value = rz_vector_index_ptr(&gap->struct_data.members, 1);
+	gap_value->offset = 4;
+	RzTypeStructMember *last = rz_vector_index_ptr(&gap->struct_data.members, 2);
+	last->offset = 8;
+	gap->size = 12 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Gap"), gap_recorded, "recorded offsets when all offsets are known");
+	last->offset = RZ_TYPE_MEMBER_OFFSET_UNKNOWN;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Gap"), gap_sum, "sum of the member sizes for all members when one offset is not known");
+
+	rz_core_free(core);
+	mu_end;
+}
+
 static bool dwarf_member_offset_from_block(ut8 *bytes, ut64 length, ut64 *offset) {
 	RzBinDwarfAttr attr = { 0 };
 	attr.at = DW_AT_data_member_location;
@@ -2395,6 +2453,7 @@ int all_tests() {
 	mu_run_test(test_struct_array_types);
 	mu_run_test(test_struct_recorded_size);
 	mu_run_test(test_struct_print_recorded_offsets);
+	mu_run_test(test_struct_print_unknown_offset);
 	mu_run_test(test_dwarf_member_offset);
 	mu_run_test(test_struct_union_bitfield);
 	mu_run_test(test_struct_identifier_without_specifier);

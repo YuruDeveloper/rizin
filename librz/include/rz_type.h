@@ -91,10 +91,12 @@ typedef struct rz_type_enum_case_t {
 	st64 val;
 } RzTypeEnumCase;
 
+#define RZ_TYPE_MEMBER_OFFSET_UNKNOWN SIZE_MAX ///< offset of a structure member when its location is not known
+
 typedef struct rz_type_struct_member_t {
 	char *name;
 	RzType *type;
-	size_t offset; // in bytes
+	size_t offset; // in bytes, or RZ_TYPE_MEMBER_OFFSET_UNKNOWN
 	size_t size; ///< bitfield width in bits, or 0 if the member is not a bitfield
 } RzTypeStructMember;
 
