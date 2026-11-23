@@ -1022,6 +1022,45 @@ static bool test_struct_array_types(void) {
 	mu_end;
 }
 
+static bool test_struct_recorded_size(void) {
+	RzTypeDB *typedb = rz_type_db_new();
+	mu_assert_notnull(typedb, "Couldn't create new RzTypeDB");
+	mu_assert_notnull(typedb->types, "Couldn't create new types hashtable");
+	const char *types_dir = TEST_BUILD_TYPES_DIR;
+	rz_type_db_init(typedb, types_dir, "x86", 64, "linux");
+	rz_type_db_set_bits(typedb, 64);
+
+	char *error_msg = NULL;
+	RzType *ttype = rz_type_parse_string_single(typedb->parser, "struct recorded { short kind; int quantity; }", &error_msg);
+	mu_assert_notnull(ttype, "type parse successfull");
+	RzBaseType *base = rz_type_db_get_base_type(typedb, "recorded");
+	mu_assert_notnull(base, "base type");
+	mu_assert_eq(RZ_BASE_TYPE_KIND_STRUCT, base->kind, "not struct");
+	mu_assert_eq(base->size, 0, "no recorded size from a C declaration");
+	mu_assert_eq(rz_type_db_get_bitsize(typedb, ttype), (2 + 4) * 8, "bitsize from the members");
+
+	base->size = 8 * 8;
+	mu_assert_eq(rz_type_db_get_bitsize(typedb, ttype), 8 * 8, "bitsize from the recorded size");
+	mu_assert_eq(rz_type_db_base_get_bitsize(typedb, base), 8 * 8, "bitsize of the base type");
+	RzType *array = rz_type_array_of_type(typedb, ttype, 3);
+	mu_assert_notnull(array, "array type");
+	mu_assert_eq(rz_type_db_get_bitsize(typedb, array), 3 * 8 * 8, "bitsize of an array");
+	rz_type_free(array);
+
+	ttype = rz_type_parse_string_single(typedb->parser, "union recorded_choice { char bytes[5]; int wide; }", &error_msg);
+	mu_assert_notnull(ttype, "type parse successfull");
+	base = rz_type_db_get_base_type(typedb, "recorded_choice");
+	mu_assert_notnull(base, "base type");
+	mu_assert_eq(RZ_BASE_TYPE_KIND_UNION, base->kind, "not union");
+	mu_assert_eq(rz_type_db_get_bitsize(typedb, ttype), 5 * 8, "bitsize from the members");
+	base->size = 8 * 8;
+	mu_assert_eq(rz_type_db_get_bitsize(typedb, ttype), 8 * 8, "bitsize from the recorded size");
+	rz_type_free(ttype);
+
+	rz_type_db_free(typedb);
+	mu_end;
+}
+
 static bool test_struct_union_bitfield(void) {
 	RzTypeDB *typedb = rz_type_db_new();
 	mu_assert_notnull(typedb, "Couldn't create new RzTypeDB");
@@ -2240,6 +2279,7 @@ int all_tests() {
 	mu_run_test(test_single_typedef_aliases);
 	mu_run_test(test_struct_func_types);
 	mu_run_test(test_struct_array_types);
+	mu_run_test(test_struct_recorded_size);
 	mu_run_test(test_struct_union_bitfield);
 	mu_run_test(test_struct_identifier_without_specifier);
 	mu_run_test(test_union_identifier_without_specifier);
