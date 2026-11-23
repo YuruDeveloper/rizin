@@ -1854,6 +1854,9 @@ RZ_API RZ_OWN char *rz_bin_dwarf_attr_string_escaped(
 	RZ_BORROW RZ_NONNULL const RzBinDwarfAttr *attr,
 	RZ_BORROW RZ_NULLABLE const RzBinDWARF *dw,
 	ut64 str_offsets_base);
+RZ_API bool rz_bin_dwarf_attr_member_offset(
+	RZ_BORROW RZ_NONNULL const RzBinDwarfAttr *attr,
+	RZ_NONNULL RZ_OUT ut64 *offset);
 
 static inline ut64 rz_bin_dwarf_attr_addr(
 	const RzBinDwarfAttr *attr,

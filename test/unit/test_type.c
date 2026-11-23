@@ -5,6 +5,7 @@
 #include <rz_util.h>
 #include <rz_type.h>
 #include <rz_core.h>
+#include <rz_bin_dwarf.h>
 
 #include "test_config.h"
 #include "minunit.h"
@@ -1131,6 +1132,46 @@ static bool test_struct_print_recorded_offsets(void) {
 	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Aligned"), aligned_mixed, "recorded offsets for the members that are not bitfields and the sum for the bitfields");
 
 	rz_core_free(core);
+	mu_end;
+}
+
+static bool dwarf_member_offset_from_block(ut8 *bytes, ut64 length, ut64 *offset) {
+	RzBinDwarfAttr attr = { 0 };
+	attr.at = DW_AT_data_member_location;
+	attr.form = DW_FORM_block1;
+	attr.value.kind = RzBinDwarfAttr_Block;
+	attr.value.block.data = bytes;
+	attr.value.block.length = length;
+	return rz_bin_dwarf_attr_member_offset(&attr, offset);
+}
+
+static bool test_dwarf_member_offset(void) {
+	ut64 offset = 0;
+	ut8 plus_uconst[] = { DW_OP_plus_uconst, 0x08 };
+	mu_assert_true(dwarf_member_offset_from_block(plus_uconst, sizeof(plus_uconst), &offset), "one DW_OP_plus_uconst");
+	mu_assert_eq(offset, 8, "offset from DW_OP_plus_uconst");
+	ut8 plus_uconst_two_bytes[] = { DW_OP_plus_uconst, 0x80, 0x01 };
+	mu_assert_true(dwarf_member_offset_from_block(plus_uconst_two_bytes, sizeof(plus_uconst_two_bytes), &offset), "DW_OP_plus_uconst with a two-byte operand");
+	mu_assert_eq(offset, 128, "offset from a two-byte operand");
+
+	offset = 77;
+	ut8 other_operation[] = { DW_OP_constu, 0x08 };
+	mu_assert_false(dwarf_member_offset_from_block(other_operation, sizeof(other_operation), &offset), "other operation");
+	ut8 two_operations[] = { DW_OP_plus_uconst, 0x08, DW_OP_plus_uconst, 0x04 };
+	mu_assert_false(dwarf_member_offset_from_block(two_operations, sizeof(two_operations), &offset), "two operations");
+	ut8 incomplete_operand[] = { DW_OP_plus_uconst, 0x80 };
+	mu_assert_false(dwarf_member_offset_from_block(incomplete_operand, sizeof(incomplete_operand), &offset), "incomplete operand");
+	mu_assert_false(dwarf_member_offset_from_block(plus_uconst, 1, &offset), "no operand");
+	mu_assert_false(dwarf_member_offset_from_block(plus_uconst, 0, &offset), "empty block");
+	mu_assert_eq(offset, 77, "offset does not change");
+
+	RzBinDwarfAttr constant = { 0 };
+	constant.at = DW_AT_data_member_location;
+	constant.form = DW_FORM_data1;
+	constant.value.kind = RzBinDwarfAttr_UConstant;
+	constant.value.u64 = 12;
+	mu_assert_true(rz_bin_dwarf_attr_member_offset(&constant, &offset), "constant");
+	mu_assert_eq(offset, 12, "offset from a constant");
 	mu_end;
 }
 
@@ -2354,6 +2395,7 @@ int all_tests() {
 	mu_run_test(test_struct_array_types);
 	mu_run_test(test_struct_recorded_size);
 	mu_run_test(test_struct_print_recorded_offsets);
+	mu_run_test(test_dwarf_member_offset);
 	mu_run_test(test_struct_union_bitfield);
 	mu_run_test(test_struct_identifier_without_specifier);
 	mu_run_test(test_union_identifier_without_specifier);
