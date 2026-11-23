@@ -51,7 +51,7 @@ static int rz_main_rzpipe(int argc, const char **argv) {
 int MAIN_NAME(int argc, const ARGV_TYPE **argv) {
 	char **utf8_argv = ARGV_TYPE_TO_UTF8(argc, argv);
 	int ret;
-	if (argc > 0 && strstr(utf8_argv[0], "rzp")) {
+	if (argc > 0 && strstr(rz_file_basename(utf8_argv[0]), "rzp")) {
 		ret = rz_main_rzpipe(argc, (const char **)utf8_argv);
 	} else {
 		ret = rz_main_rizin(argc, (const char **)utf8_argv);
