@@ -115,6 +115,9 @@ typedef.DOUBLE=double
 INT=typedef
 typedef.INT=int
 
+wchar_t=typedef
+typedef.wchar_t=uint16_t
+
 WCHAR=typedef
 typedef.WCHAR=wchar_t
 
