@@ -769,6 +769,9 @@ static ut64 enum_bitsize(const RzTypeDB *typedb, RZ_NONNULL RzBaseType *btype) {
 
 static ut64 struct_union_bitsize(const RzTypeDB *typedb, RZ_NONNULL RzBaseType *btype, RZ_NULLABLE RzPVector /*<RzBaseType *>*/ *visited_btypes) {
 	rz_return_val_if_fail(typedb && btype && (btype->kind == RZ_BASE_TYPE_KIND_STRUCT || btype->kind == RZ_BASE_TYPE_KIND_UNION), 0);
+	if (btype->size) {
+		return btype->size;
+	}
 	RzPVector visited_btypes_owned; // for detecting self-referential typedefs (maybe in multiple steps)
 	if (!visited_btypes) {
 		// Lazy allocation of the visited_btypes stack, only at this point we will actually need it
