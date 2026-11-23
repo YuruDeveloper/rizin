@@ -1109,10 +1109,10 @@ static bool test_struct_print_recorded_offsets(void) {
 	flags->size = 8 * 8;
 	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Flags"), flags_sum, "sum of the member sizes when recorded offsets overlap");
 
-	const char *aligned_mixed =
+	const char *aligned_recorded =
 		"struct Aligned:\n"
 		"\tfirst: char (size = 1, offset = 0)\n"
-		"\tsecond: char (size = 1, offset = 1)\n"
+		"\tsecond: char (size = 1, offset = 0)\n"
 		"\tprefix: char (size = 1, offset = 1)\n"
 		"\tmarker: char (size = 1, offset = 2)\n"
 		"\ttail: short (size = 2, offset = 4)\n";
@@ -1128,8 +1128,53 @@ static bool test_struct_print_recorded_offsets(void) {
 	marker->offset = 2;
 	RzTypeStructMember *tail = rz_vector_index_ptr(&aligned->struct_data.members, 4);
 	tail->size = 16;
+	tail->offset = 4;
 	aligned->size = 6 * 8;
-	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Aligned"), aligned_mixed, "recorded offsets for the members that are not bitfields and the sum for the bitfields");
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Aligned"), aligned_recorded, "recorded offsets for the bitfields and for the other members");
+
+	rz_core_free(core);
+	mu_end;
+}
+
+static bool test_struct_print_bitfield_offsets(void) {
+	RzCore *core = rz_core_new();
+	mu_assert_notnull(core, "core");
+	rz_config_set_i(core->config, "scr.color", COLOR_MODE_DISABLED);
+	RzTypeDB *typedb = rz_analysis_get_type_db(core->analysis);
+	const char *types_dir = TEST_BUILD_TYPES_DIR;
+	rz_type_db_init(typedb, types_dir, "x86", 64, "linux");
+	rz_type_db_set_bits(typedb, 64);
+	const char *setup = "td \"struct Anchor { int mode; int wide; int low; int high; };\"";
+	mu_assert_eq(rz_core_cmd0_rzshell(core, setup), RZ_CMD_STATUS_OK, "define test types");
+
+	const char *anchor_recorded =
+		"struct Anchor:\n"
+		"\tmode: int (size = 4, offset = 0)\n"
+		"\twide: int (size = 4, offset = 8)\n"
+		"\tlow: int (size = 4, offset = 16)\n"
+		"\thigh: int (size = 4, offset = 16)\n";
+	const char *anchor_high_sum =
+		"struct Anchor:\n"
+		"\tmode: int (size = 4, offset = 0)\n"
+		"\twide: int (size = 4, offset = 8)\n"
+		"\tlow: int (size = 4, offset = 16)\n"
+		"\thigh: int (size = 4, offset = 12)\n";
+	RzBaseType *anchor = rz_type_db_get_base_type(typedb, "Anchor");
+	mu_assert_notnull(anchor, "base type");
+	RzTypeStructMember *wide = rz_vector_index_ptr(&anchor->struct_data.members, 1);
+	wide->offset = 8;
+	RzTypeStructMember *low = rz_vector_index_ptr(&anchor->struct_data.members, 2);
+	low->size = 1;
+	low->offset = 16;
+	RzTypeStructMember *high = rz_vector_index_ptr(&anchor->struct_data.members, 3);
+	high->size = 1;
+	high->offset = 16;
+	anchor->size = 24 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Anchor"), anchor_recorded, "recorded offsets for two bitfields in one storage unit after a gap");
+	high->offset = 24;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Anchor"), anchor_high_sum, "sum of the member sizes only for a bitfield with an offset that is not in the structure");
+	high->offset = RZ_TYPE_MEMBER_OFFSET_UNKNOWN;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Anchor"), anchor_high_sum, "sum of the member sizes only for a bitfield with an offset that is not known");
 
 	rz_core_free(core);
 	mu_end;
@@ -2453,6 +2498,7 @@ int all_tests() {
 	mu_run_test(test_struct_array_types);
 	mu_run_test(test_struct_recorded_size);
 	mu_run_test(test_struct_print_recorded_offsets);
+	mu_run_test(test_struct_print_bitfield_offsets);
 	mu_run_test(test_struct_print_unknown_offset);
 	mu_run_test(test_dwarf_member_offset);
 	mu_run_test(test_struct_union_bitfield);

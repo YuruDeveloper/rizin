@@ -1162,13 +1162,16 @@ static RzTypeStructMember *struct_member_parse(
 		case DW_AT_bit_size:
 			size = rz_bin_dwarf_attr_udata(attr);
 			break;
-		case DW_AT_accessibility: // private, public etc.
-		case DW_AT_mutable: // flag is it is mutable
 		case DW_AT_data_bit_offset:
 			/*
 				int that specifies the number of bits from beginning
-				of containing entity to the beginning of the data member
+				of containing entity to the beginning of the data member.
+				The member offset is the byte that contains the first bit.
 			*/
+			offset = rz_bin_dwarf_attr_udata(attr) / 8;
+			break;
+		case DW_AT_accessibility: // private, public etc.
+		case DW_AT_mutable: // flag is it is mutable
 		case DW_AT_containing_type:
 		default:
 			break;
