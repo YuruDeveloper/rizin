@@ -267,6 +267,26 @@ RZ_IPI RZ_OWN char *rz_core_types_union_as_c_all(RzTypeDB *typedb, bool multilin
 
 // Structures
 
+static bool struct_has_recorded_layout(const RzTypeDB *typedb, const RzBaseType *btype) {
+	ut64 struct_size = btype->size / 8;
+	if (!struct_size) {
+		return false;
+	}
+	ut64 end = 0;
+	RzTypeStructMember *memb;
+	rz_vector_foreach (&btype->struct_data.members, memb) {
+		if (memb->size) {
+			continue;
+		}
+		ut64 size = rz_type_db_get_bitsize(typedb, memb->type) / 8;
+		if (memb->offset < end || memb->offset > struct_size || size > struct_size - memb->offset) {
+			return false;
+		}
+		end = memb->offset + size;
+	}
+	return true;
+}
+
 RZ_IPI void rz_core_types_struct_print(RzCore *core, const RzBaseType *btype, RzOutputMode mode, PJ *pj) {
 	rz_return_if_fail(core && btype);
 	rz_return_if_fail(btype->kind == RZ_BASE_TYPE_KIND_STRUCT);
@@ -293,15 +313,17 @@ RZ_IPI void rz_core_types_struct_print(RzCore *core, const RzBaseType *btype, Rz
 		rz_cons_printf(core->cons, "struct %s:\n", btype->name);
 		if (btype && !rz_vector_empty(&btype->union_data.members)) {
 			RzTypeStructMember *memb;
+			bool recorded_layout = struct_has_recorded_layout(typedb, btype);
 			ut64 offset = 0;
 			rz_vector_foreach (&btype->struct_data.members, memb) {
 				char *mtype = rz_type_as_string(typedb, memb->type);
 				ut64 size = rz_type_db_get_bitsize(typedb, memb->type) / 8;
+				ut64 shown_offset = recorded_layout && !memb->size ? memb->offset : offset;
 				rz_cons_printf(core->cons, "\t%s: ", memb->name);
 				if (mtype) {
 					rz_core_types_print_c(core->cons, mtype);
 				}
-				rz_cons_printf(core->cons, " (size = %" PFMT64d ", offset = %" PFMT64d ")\n", size, offset);
+				rz_cons_printf(core->cons, " (size = %" PFMT64d ", offset = %" PFMT64d ")\n", size, shown_offset);
 				offset += size;
 				free(mtype);
 			}

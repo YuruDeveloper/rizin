@@ -4,6 +4,7 @@
 
 #include <rz_util.h>
 #include <rz_type.h>
+#include <rz_core.h>
 
 #include "test_config.h"
 #include "minunit.h"
@@ -1058,6 +1059,78 @@ static bool test_struct_recorded_size(void) {
 	rz_type_free(ttype);
 
 	rz_type_db_free(typedb);
+	mu_end;
+}
+
+static bool test_struct_print_recorded_offsets(void) {
+	RzCore *core = rz_core_new();
+	mu_assert_notnull(core, "core");
+	rz_config_set_i(core->config, "scr.color", COLOR_MODE_DISABLED);
+	RzTypeDB *typedb = rz_analysis_get_type_db(core->analysis);
+	const char *types_dir = TEST_BUILD_TYPES_DIR;
+	rz_type_db_init(typedb, types_dir, "x86", 64, "linux");
+	rz_type_db_set_bits(typedb, 64);
+	const char *setup =
+		"td \"struct Padded { char kind; int quantity; };\"; "
+		"td \"struct Flags { int low; int high; int count; };\"; "
+		"td \"struct Aligned { char first; char second; char prefix; char marker; short tail; };\"";
+	mu_assert_eq(rz_core_cmd0_rzshell(core, setup), RZ_CMD_STATUS_OK, "define test types");
+
+	const char *padded_sum =
+		"struct Padded:\n"
+		"\tkind: char (size = 1, offset = 0)\n"
+		"\tquantity: int (size = 4, offset = 1)\n";
+	const char *padded_recorded =
+		"struct Padded:\n"
+		"\tkind: char (size = 1, offset = 0)\n"
+		"\tquantity: int (size = 4, offset = 4)\n";
+	RzBaseType *padded = rz_type_db_get_base_type(typedb, "Padded");
+	mu_assert_notnull(padded, "base type");
+	RzTypeStructMember *quantity = rz_vector_index_ptr(&padded->struct_data.members, 1);
+	quantity->offset = 4;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Padded"), padded_sum, "sum of the member sizes without a recorded size");
+	padded->size = 8 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Padded"), padded_recorded, "recorded offsets with a recorded size");
+	padded->size = 6 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Padded"), padded_sum, "sum of the member sizes when a member ends after the recorded size");
+
+	const char *flags_sum =
+		"struct Flags:\n"
+		"\tlow: int (size = 4, offset = 0)\n"
+		"\thigh: int (size = 4, offset = 4)\n"
+		"\tcount: int (size = 4, offset = 8)\n";
+	RzBaseType *flags = rz_type_db_get_base_type(typedb, "Flags");
+	mu_assert_notnull(flags, "base type");
+	RzTypeStructMember *high = rz_vector_index_ptr(&flags->struct_data.members, 1);
+	high->offset = 0;
+	RzTypeStructMember *count = rz_vector_index_ptr(&flags->struct_data.members, 2);
+	count->offset = 4;
+	flags->size = 8 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Flags"), flags_sum, "sum of the member sizes when recorded offsets overlap");
+
+	const char *aligned_mixed =
+		"struct Aligned:\n"
+		"\tfirst: char (size = 1, offset = 0)\n"
+		"\tsecond: char (size = 1, offset = 1)\n"
+		"\tprefix: char (size = 1, offset = 1)\n"
+		"\tmarker: char (size = 1, offset = 2)\n"
+		"\ttail: short (size = 2, offset = 4)\n";
+	RzBaseType *aligned = rz_type_db_get_base_type(typedb, "Aligned");
+	mu_assert_notnull(aligned, "base type");
+	RzTypeStructMember *first = rz_vector_index_ptr(&aligned->struct_data.members, 0);
+	first->size = 1;
+	RzTypeStructMember *second = rz_vector_index_ptr(&aligned->struct_data.members, 1);
+	second->size = 1;
+	RzTypeStructMember *prefix = rz_vector_index_ptr(&aligned->struct_data.members, 2);
+	prefix->offset = 1;
+	RzTypeStructMember *marker = rz_vector_index_ptr(&aligned->struct_data.members, 3);
+	marker->offset = 2;
+	RzTypeStructMember *tail = rz_vector_index_ptr(&aligned->struct_data.members, 4);
+	tail->size = 16;
+	aligned->size = 6 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Aligned"), aligned_mixed, "recorded offsets for the members that are not bitfields and the sum for the bitfields");
+
+	rz_core_free(core);
 	mu_end;
 }
 
@@ -2280,6 +2353,7 @@ int all_tests() {
 	mu_run_test(test_struct_func_types);
 	mu_run_test(test_struct_array_types);
 	mu_run_test(test_struct_recorded_size);
+	mu_run_test(test_struct_print_recorded_offsets);
 	mu_run_test(test_struct_union_bitfield);
 	mu_run_test(test_struct_identifier_without_specifier);
 	mu_run_test(test_union_identifier_without_specifier);
