@@ -248,6 +248,39 @@ RZ_API RZ_OWN char *rz_bin_dwarf_attr_string_escaped(
 	return str_escape_utf8_copy(str_ref);
 }
 
+/**
+ * \brief Get the byte offset of a member from a DW_AT_data_member_location attribute.
+ *
+ * A block gives an offset only when it is one DW_OP_plus_uconst operation.
+ * An attribute that is not a block gives its value.
+ *
+ * \param attr The DW_AT_data_member_location attribute
+ * \param offset The byte offset of the member
+ * \return false when the attribute is a block that is not one DW_OP_plus_uconst operation
+ */
+RZ_API bool rz_bin_dwarf_attr_member_offset(
+	RZ_BORROW RZ_NONNULL const RzBinDwarfAttr *attr,
+	RZ_NONNULL RZ_OUT ut64 *offset) {
+	rz_return_val_if_fail(attr && offset, false);
+
+	if (attr->value.kind != RzBinDwarfAttr_Block) {
+		*offset = attr->value.u64;
+		return true;
+	}
+	const ut8 *data = rz_bin_dwarf_block_data(&attr->value.block);
+	ut64 length = attr->value.block.length;
+	if (!data || length < 2 || data[0] != DW_OP_plus_uconst) {
+		return false;
+	}
+	ut64 operand = 0;
+	size_t operand_length = read_u64_leb128(data + 1, data + length, &operand);
+	if (!operand_length || operand_length != length - 1) {
+		return false;
+	}
+	*offset = operand;
+	return true;
+}
+
 RZ_API void rz_bin_dwarf_attr_dump(
 	RZ_NONNULL RZ_BORROW const RzBinDwarfAttr *attr,
 	RZ_BORROW RZ_NULLABLE RzBinDWARF *dw,

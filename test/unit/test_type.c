@@ -5,6 +5,7 @@
 #include <rz_util.h>
 #include <rz_type.h>
 #include <rz_core.h>
+#include <rz_bin_dwarf.h>
 
 #include "test_config.h"
 #include "minunit.h"
@@ -1131,6 +1132,104 @@ static bool test_struct_print_recorded_offsets(void) {
 	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Aligned"), aligned_mixed, "recorded offsets for the members that are not bitfields and the sum for the bitfields");
 
 	rz_core_free(core);
+	mu_end;
+}
+
+static bool test_struct_print_unknown_offset(void) {
+	RzCore *core = rz_core_new();
+	mu_assert_notnull(core, "core");
+	rz_config_set_i(core->config, "scr.color", COLOR_MODE_DISABLED);
+	RzTypeDB *typedb = rz_analysis_get_type_db(core->analysis);
+	const char *types_dir = TEST_BUILD_TYPES_DIR;
+	rz_type_db_init(typedb, types_dir, "x86", 64, "linux");
+	rz_type_db_set_bits(typedb, 64);
+	const char *setup =
+		"td \"struct Mixed { int flags; int value; };\"; "
+		"td \"struct Gap { char tag; int value; int last; };\"";
+	mu_assert_eq(rz_core_cmd0_rzshell(core, setup), RZ_CMD_STATUS_OK, "define test types");
+
+	const char *mixed_sum =
+		"struct Mixed:\n"
+		"\tflags: int (size = 4, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 4)\n";
+	const char *mixed_recorded_zero =
+		"struct Mixed:\n"
+		"\tflags: int (size = 4, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 0)\n";
+	RzBaseType *mixed = rz_type_db_get_base_type(typedb, "Mixed");
+	mu_assert_notnull(mixed, "base type");
+	RzTypeStructMember *flags = rz_vector_index_ptr(&mixed->struct_data.members, 0);
+	flags->size = 32;
+	RzTypeStructMember *value = rz_vector_index_ptr(&mixed->struct_data.members, 1);
+	mixed->size = 8 * 8;
+	value->offset = 0;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Mixed"), mixed_recorded_zero, "recorded offset 0 for the member after a bitfield");
+	value->offset = RZ_TYPE_MEMBER_OFFSET_UNKNOWN;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Mixed"), mixed_sum, "sum of the member sizes when the offset of the member after a bitfield is not known");
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Mixed"), mixed_sum, "same output for the second call");
+
+	const char *gap_sum =
+		"struct Gap:\n"
+		"\ttag: char (size = 1, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 1)\n"
+		"\tlast: int (size = 4, offset = 5)\n";
+	const char *gap_recorded =
+		"struct Gap:\n"
+		"\ttag: char (size = 1, offset = 0)\n"
+		"\tvalue: int (size = 4, offset = 4)\n"
+		"\tlast: int (size = 4, offset = 8)\n";
+	RzBaseType *gap = rz_type_db_get_base_type(typedb, "Gap");
+	mu_assert_notnull(gap, "base type");
+	RzTypeStructMember *gap_value = rz_vector_index_ptr(&gap->struct_data.members, 1);
+	gap_value->offset = 4;
+	RzTypeStructMember *last = rz_vector_index_ptr(&gap->struct_data.members, 2);
+	last->offset = 8;
+	gap->size = 12 * 8;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Gap"), gap_recorded, "recorded offsets when all offsets are known");
+	last->offset = RZ_TYPE_MEMBER_OFFSET_UNKNOWN;
+	mu_assert_streq_free(rz_core_cmd_str(core, "tsl Gap"), gap_sum, "sum of the member sizes for all members when one offset is not known");
+
+	rz_core_free(core);
+	mu_end;
+}
+
+static bool dwarf_member_offset_from_block(ut8 *bytes, ut64 length, ut64 *offset) {
+	RzBinDwarfAttr attr = { 0 };
+	attr.at = DW_AT_data_member_location;
+	attr.form = DW_FORM_block1;
+	attr.value.kind = RzBinDwarfAttr_Block;
+	attr.value.block.data = bytes;
+	attr.value.block.length = length;
+	return rz_bin_dwarf_attr_member_offset(&attr, offset);
+}
+
+static bool test_dwarf_member_offset(void) {
+	ut64 offset = 0;
+	ut8 plus_uconst[] = { DW_OP_plus_uconst, 0x08 };
+	mu_assert_true(dwarf_member_offset_from_block(plus_uconst, sizeof(plus_uconst), &offset), "one DW_OP_plus_uconst");
+	mu_assert_eq(offset, 8, "offset from DW_OP_plus_uconst");
+	ut8 plus_uconst_two_bytes[] = { DW_OP_plus_uconst, 0x80, 0x01 };
+	mu_assert_true(dwarf_member_offset_from_block(plus_uconst_two_bytes, sizeof(plus_uconst_two_bytes), &offset), "DW_OP_plus_uconst with a two-byte operand");
+	mu_assert_eq(offset, 128, "offset from a two-byte operand");
+
+	offset = 77;
+	ut8 other_operation[] = { DW_OP_constu, 0x08 };
+	mu_assert_false(dwarf_member_offset_from_block(other_operation, sizeof(other_operation), &offset), "other operation");
+	ut8 two_operations[] = { DW_OP_plus_uconst, 0x08, DW_OP_plus_uconst, 0x04 };
+	mu_assert_false(dwarf_member_offset_from_block(two_operations, sizeof(two_operations), &offset), "two operations");
+	ut8 incomplete_operand[] = { DW_OP_plus_uconst, 0x80 };
+	mu_assert_false(dwarf_member_offset_from_block(incomplete_operand, sizeof(incomplete_operand), &offset), "incomplete operand");
+	mu_assert_false(dwarf_member_offset_from_block(plus_uconst, 1, &offset), "no operand");
+	mu_assert_false(dwarf_member_offset_from_block(plus_uconst, 0, &offset), "empty block");
+	mu_assert_eq(offset, 77, "offset does not change");
+
+	RzBinDwarfAttr constant = { 0 };
+	constant.at = DW_AT_data_member_location;
+	constant.form = DW_FORM_data1;
+	constant.value.kind = RzBinDwarfAttr_UConstant;
+	constant.value.u64 = 12;
+	mu_assert_true(rz_bin_dwarf_attr_member_offset(&constant, &offset), "constant");
+	mu_assert_eq(offset, 12, "offset from a constant");
 	mu_end;
 }
 
@@ -2354,6 +2453,8 @@ int all_tests() {
 	mu_run_test(test_struct_array_types);
 	mu_run_test(test_struct_recorded_size);
 	mu_run_test(test_struct_print_recorded_offsets);
+	mu_run_test(test_struct_print_unknown_offset);
+	mu_run_test(test_dwarf_member_offset);
 	mu_run_test(test_struct_union_bitfield);
 	mu_run_test(test_struct_identifier_without_specifier);
 	mu_run_test(test_union_identifier_without_specifier);

@@ -1150,7 +1150,9 @@ static RzTypeStructMember *struct_member_parse(
 				2.: value is a location description
 				https://www.dwarfstd.org/doc/DWARF4.pdf#page=39
 			*/
-			offset = rz_bin_dwarf_attr_udata(attr);
+			if (!rz_bin_dwarf_attr_member_offset(attr, &offset)) {
+				offset = RZ_TYPE_MEMBER_OFFSET_UNKNOWN;
+			}
 			break;
 		// A bitfield member carries DW_AT_bit_size, whose value is the width in
 		// bits and is recorded as the member size. DW_AT_byte_size is the storage
