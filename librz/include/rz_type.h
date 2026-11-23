@@ -98,6 +98,7 @@ typedef struct rz_type_struct_member_t {
 	RzType *type;
 	size_t offset; // in bytes, or RZ_TYPE_MEMBER_OFFSET_UNKNOWN
 	size_t size; ///< bitfield width in bits, or 0 if the member is not a bitfield
+	ut64 bit_end; ///< bits from the start of the structure to the end of the bitfield, or 0 if the position is not known
 } RzTypeStructMember;
 
 typedef struct rz_type_union_member_t {
